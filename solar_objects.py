@@ -1,8 +1,5 @@
-# coding: utf-8
-# license: GPLv3
-
 class Header:
-    title="Небесная механика 1.0"
+    title=""
 """Заголовок картинки можно считать из файла
     """
 class Star:
