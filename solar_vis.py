@@ -1,116 +1,176 @@
-# coding: utf-8
-# license: GPLv3
+#-------------------------------------------------------------------------------
+# Name:        модуль2
+# Purpose:
+#
+# Author:      Черняев Валентин
+#
+# Created:     15.11.2016
+# Copyright:   (c) Черняев Валентин 2016
+# Licence:     <your licence>
+#-------------------------------------------------------------------------------
 
-"""Модуль визуализации.
-Нигде, кроме этого модуля, не используются экранные координаты объектов.
-Функции, создающие гaрафические объекты и перемещающие их на экране, принимают физические координаты
-"""
+import tkinter
+from tkinter.filedialog import *
+from solar_vis import *
+from solar_model import *
+from solar_input import *
 
-header_font = "Arial-16"
-"""Шрифт в заголовке"""
-
-window_width = 800
-"""Ширина окна"""
-
-window_height = 800
-"""Высота окна"""
-
-scale_factor = None
-"""Масштабирование экранных координат по отношению к физическим.
-Тип: float
-Мера: количество пикселей на один метр."""
+perform_execution = False
+"""Флаг расчёта"""
 
 
-def calculate_scale_factor(max_distance):
-    """Вычисляет значение глобальной переменной **scale_factor** по данной характерной длине"""
-    global scale_factor
-    scale_factor = 0.4*min(window_height, window_width)/max_distance
-    print('Scale factor:', scale_factor)
+
+"""Заголовок по умолчанию"""
+physical_time = 0
+"""Физическое время от начала расчёта.
+Тип: float"""
+
+displayed_time = None
+"""Отображаемое на экране время.
+Тип: переменная tkinter"""
+
+time_step = None
+"""Шаг по времени при моделировании.
+Тип: float"""
+
+space_objects = []
+"""Список космических объектов."""
 
 
-def scale_x(x):
-    """Возвращает экранную **x** координату по **x** координате модели.
-    Принимает вещественное число, возвращает целое число.
-    В случае выхода **x** координаты за пределы экрана возвращает
-    координату, лежащую за пределами холста.
-
-    Параметры:
-
-    **x** — x-координата модели.
+def execution():
+    """Функция исполнения -- выполняется циклически, вызывая обработку всех небесных тел,
+    а также обновляя их положение на экране.
+    Цикличность выполнения зависит от значения глобальной переменной perform_execution.
+    При perform_execution == True функция запрашивает вызов самой себя по таймеру через от 1 мс до 100 мс.
     """
+    global physical_time
+    global displayed_time
+    recalculate_space_objects_positions(space_objects, time_step.get())
+    for body in space_objects:
+        update_object_position(space, body)
+    physical_time += time_step.get()
+    displayed_time.set("%.1f" % physical_time + " прошло секунд")
 
-    return int(x*scale_factor) + window_width//2
+    if perform_execution:
+        space.after(101 - int(time_speed.get()), execution)
 
 
-def scale_y(y):
-    """Возвращает экранную **y** координату по **y** координате модели.
-    Принимает вещественное число, возвращает целое число.
-    В случае выхода **y** координаты за пределы экрана возвращает
-    координату, лежащую за пределами холста.
-    Направление оси развёрнуто, чтобы у модели ось **y** смотрела вверх.
-
-    Параметры:
-
-    **y** — y-координата модели.
+def start_execution():
+    """Обработчик события нажатия на кнопку Start.
+    Запускает циклическое исполнение функции execution.
     """
+    global perform_execution
+    perform_execution = True
+    start_button['text'] = "Пауза"
+    start_button['command'] = stop_execution
 
-    return y  # FIXME: not done yet
+    execution()
+    print('Программа запущена..')
 
 
-def create_star_image(space, star):
-    """Создаёт отображаемый объект звезды.
-
-    Параметры:
-
-    **space** — холст для рисования.
-    **star** — объект звезды.
+def stop_execution():
+    """Обработчик события нажатия на кнопку Start.
+    Останавливает циклическое исполнение функции execution.
     """
+    global perform_execution
+    perform_execution = False
+    start_button['text'] = "Пуск"
+    start_button['command'] = start_execution
+    print('Выполнение приостановлено')
 
-    x = scale_x(star.x)
-    y = scale_y(star.y)
-    r = star.R
-    star.image = space.create_oval([x - r, y - r], [x + r, y + r], fill=star.color)
 
-
-def create_planet_image(space, planet):
-    """Создаёт отображаемый объект планеты.
-
-    Параметры:
-
-    **space** — холст для рисования.
-    **planet** — объект планеты.
+def open_file_dialog():
+    """Открывает диалоговое окно выбора имени файла и вызывает
+    функцию считывания параметров системы небесных тел из данного файла.
+    Считанные объекты сохраняются в глобальный список space_objects
     """
-    pass  # FIXME: сделать как у звезды
+    global title_hider
+    global space_objects
+    global perform_execution
+    perform_execution = False
+    for obj in space_objects:
+        space.delete(obj.image)  # удаление старых изображений планет
+    in_filename = askopenfilename(filetypes=(("Text file", ".txt"),))
+    space_objects = read_space_objects_data_from_file(in_filename)
+    max_distance = max([max(abs(obj.x), abs(obj.y)) for obj in space_objects])
+    # вычмсление масштаба отображения для первода в экранные координаты
+    calculate_scale_factor(max_distance)
+     #  Подпись на холсте
+    update_system_name(space, title_header.title)
 
 
-def update_system_name(space, system_name):
-    """Создаёт на холсте текст с названием системы небесных тел.
-    Если текст уже был, обновляет его содержание.
 
-    Параметры:
+    for obj in space_objects:
+        if obj.type == 'star':
+            create_star_image(space, obj)
+        elif obj.type == 'planet':
+            create_planet_image(space, obj)
+        else:
+            raise AssertionError()
 
-    **space** — холст для рисования.
-    **system_name** — название системы тел.
+
+def save_file_dialog():
+    """Открывает диалоговое окно выбора имени файла и вызывает
+    функцию считывания параметров системы небесных тел из данного файла.
+    Считанные объекты сохраняются в глобальный список space_objects
     """
-    space.create_text(30, 80, tag="header", text=system_name, font=header_font)
+    out_filename = asksaveasfilename(title = "Введите название файла отчёта",
+    initialfile='Report.txt',filetypes=(("Text file", ".txt"),))
+    write_space_objects_data_to_file(out_filename, space_objects)
 
 
-def update_object_position(space, body):
-    """Перемещает отображаемый объект на холсте.
 
-    Параметры:
-
-    **space** — холст для рисования.
-    **body** — тело, которое нужно переместить.
+    """Главная функция главного модуля.
+    Создаёт объекты графического дизайна библиотеки tkinter: окно, холст, фрейм с кнопками, кнопки.
     """
-    x = scale_x(body.x)
-    y = scale_y(body.y)
-    r = body.R
-    if x + r < 0 or x - r > window_width or y + r < 0 or y - r > window_height:
-        space.coords(body.image, window_width + r, window_height + r,
-                     window_width + 2*r, window_height + 2*r)  # положить за пределы окна
-    space.coords(body.image, x - r, y - r, x + r, y + r)
+global physical_time
+global displayed_time
+global time_step
+global time_speed
+global space
+global start_button
+
+print('Моделирование запущено..')
+physical_time = 0
+
+root = tkinter.Tk()
+    # космическое пространство отображается на холсте типа Canvas
+    # ЛУЧШЕ ЗАДАТЬ ЯВНО РАЗМЕР ПОЛОТНА ИНАЧЕ НЕ ОТОБРАЖАЕТСЯ НИЖНИЙ ФРЕЙМ
+space = tkinter.Canvas(root, width=900, height=500, bg="black")
+space.pack(side=tkinter.TOP)
+    # нижняя панель с кнопками
+frame = tkinter.Frame(root)
+frame.pack(side=tkinter.BOTTOM)
+
+start_button = tkinter.Button(frame, text="Пуск", command=start_execution, width=6)
+start_button.pack(side=tkinter.LEFT)
+lab = Label(frame, text="Множитель времени")
+lab.pack(side=tkinter.LEFT)
+# Поле ввода шага времени чтобы работало нужно минимум 100 000
+time_step = tkinter.DoubleVar()
+time_step.set(100000)
+time_step_entry = tkinter.Entry(frame, width=8, bd=3, textvariable=time_step)
+time_step_entry.pack(side=tkinter.LEFT)
+
+time_speed = tkinter.DoubleVar()
+scale = tkinter.Scale(frame, variable=time_speed, length=100,
+from_=0,to=100,resolution=1,
+orient=HORIZONTAL)
 
 
-if __name__ == "__main__":
-    print("This module is not for direct call!")
+scale.pack(side=tkinter.LEFT, fill="y")
+
+
+load_file_button = tkinter.Button(frame, text="Открыть файл..", command=open_file_dialog)
+load_file_button.pack(side=tkinter.LEFT)
+save_file_button = tkinter.Button(frame, text="Сохранить в файл...", command=save_file_dialog)
+save_file_button.pack(side=tkinter.LEFT)
+
+displayed_time = tkinter.StringVar()
+displayed_time.set(str(physical_time) + " секунд с момента запуска")
+time_label = tkinter.Label(frame, textvariable=displayed_time, width=30)
+time_label.pack(side=tkinter.RIGHT)
+#Комментарий
+
+root.mainloop()
+print('Моделирование завершено...')
